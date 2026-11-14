@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hieroglyph Phonogram Engine</title>
+    <style>
+        :root {
+            --primary: #c9a227;
+            --secondary: #8b6914;
+            --dark: #1a1a2e;
+            --darker: #0f0f1a;
+            --gold: #ffd700;
+            --papyrus: #f4e4bc;
+            --hieroglyph-red: #b83b3b;
+            --temple-blue: #2e4e7e;
+            
+            /* Canvas cake theme */
+            --frosting: #fff0f5;
+            --cake-layer: #d4a574;
+            --sprinkle-1: #ff6b6b;
+            --sprinkle-2: #4ecdc4;
+            --sprinkle-3: #ffe66d;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--dark), var(--darker));
+            color: var(--papyrus);
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+        
+        #app {
+            display: grid;
+            grid-template-columns: 300px 1fr 300px;
+            grid-template-rows: 60px 1fr 200px;
+            height: 100vh;
+            gap: 8px;
+            padding: 8px;
+            background: radial-gradient(circle at center, #2a2a4a 0%, #1a1a2e 50%, #0f0f1a 100%);
+        }
+        
+        /* Header */
+        .header {
+            grid-column: 1 / -1;
+            background: linear-gradient(90deg, var(--dark), var(--temple-blue), var(--dark));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            border: 2px solid var(--primary);
+            box-shadow: 0 4px 15px rgba(201, 162, 39, 0.3);
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--gold);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .logo-glyph {
+            font-size: 36px;
+            filter: drop-shadow(0 0 10px var(--gold));
+        }
+        
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .global-param {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(0,0,0,0.3);
+            padding: 5px 10px;
+            border-radius: 5px;
+            border: 1px solid var(--secondary);
+        }
+        
+        .global-param label {
+            font-size: 12px;
+            color: var(--primary);
+        }
+        
+        /* Hieroglyph Keyboard Panel */
+        .hieroglyph-panel {
+            background: linear-gradient(180deg, #2d2d4a, #1a1a2e);
+            border-radius: 8px;
+            border: 2px solid var(--secondary);
+            overflow-y: auto;
+            padding: 15px;
+            grid-row: 2 / 3;
+        }
+        
+        .panel-header {
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--gold);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-bottom: 2px solid var(--secondary);
+            padding-bottom: 8px;
+        }
+        
+        .glyph-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        
+        .glyph-key {
+            background: linear-gradient(135deg, #3a3a5a, #2a2a4a);
+            border: 1px solid var(--secondary);
+            border-radius: 8px;
+            padding: 10px 5px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .glyph-key:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(201, 162, 39, 0.4);
+            border-color: var(--gold);
+        }
+        
+        .glyph-key.active {
+            background: linear-gradient(135deg, var(--gold), var(--primary));
+            border-color: var(--gold);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+        
+        .glyph-symbol {
+            font-size: 28px;
+            color: var(--papyrus);
+            margin-bottom: 5px;
+            filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.5));
+        }
+        
+        .glyph-info {
+            font-size: 9px;
+            color: var(--primary);
+            line-height: 1.2;
+        }
+        
+        .glyph-translit {
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--gold);
+        }
+        
+        .glyph-gardiner {
+            font-size: 8px;
+            color: #666;
+        }
+        
+        /* Central Display Area */
+        .display-panel {
+            display: grid;
+            grid-template-rows: 1fr 120px;
+            gap: 8px;
+            grid-row: 2 / 3;
+        }
+        
+        .visualizer {
+            background: rgba(0,0,0,0.5);
+            border-radius: 8px;
+            border: 2px solid var(--secondary);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .visualizer-controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+        
+        .viz-btn {
+            background: rgba(201, 162, 39, 0.8);
+            border: none;
+            color: var(--dark);
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        
+        .viz-btn:hover {
+            background: var(--gold);
+        }
+        
+        .viz-btn.active {
+            background: #ff4444;
+            color: white;
+        }
+        
+        /* Formant Display */
+        .formant-display {
+            background: rgba(0,0,0,0.7);
+            border-radius: 8px;
+            border: 2px solid var(--secondary);
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+        }
+        
+        .formant-box {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .formant-label {
+            font-size: 10px;
+            color: var(--primary);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        
+        .formant-freq {
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--gold);
+            text-shadow: 0 0 10px rgba(255,215,0,0.5);
+        }
+        
+        .formant-bar {
+            height: 60px;
+            width: 20px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 10px;
+            margin: 5px auto;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--secondary);
+        }
+        
+        .formant-fill {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: linear-gradient(180deg, var(--gold), var(--secondary));
+            transition: height 0.1s;
+        }
+        
+        /* Right Panel - Heka Controls */
+        .heka-panel {
+            background: linear-gradient(180deg, #2d2d4a, #1a1a2e);
+            border-radius: 8px;
+            border: 2px solid var(--secondary);
+            padding: 15px;
+            grid-row: 2 / 3;
+        }
+        
+        .control-section {
+            margin-bottom: 20px;
+        }
+        
+        .control-section h3 {
+            color: var(--gold);
+            font-size: 13px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--secondary);
+            padding-bottom: 5px;
+        }
+        
+        .knob-control {
+            text-align: center;
+            margin: 15px 0;
+        }
+        
+        .knob {
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle, #3a3a5a, #1a1a2e);
+            border-radius: 50%;
+            border: 3px solid var(--secondary);
+            position: relative;
+            cursor: grab;
+            margin: 0 auto;
+            transition: transform 0.1s;
+        }
+        
+        .knob:hover {
+            transform: scale(1.05);
+        }
+        
+        .knob:active {
+            cursor: grabbing;
+        }
+        
+        .knob-indicator {
+            position: absolute;
+            top: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 3px;
+            height: 30px;
+            background: var(--gold);
+            border-radius: 3px;
+            box-shadow: 0 0 5px var(--gold);
+            transform-origin: 50% 35px;
+        }
+        
+        .knob-label {
+            font-size: 11px;
+            color: var(--papyrus);
+            margin-top: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .knob-value {
+            font-size: 14px;
+            color: var(--gold);
+            font-weight: bold;
+            margin-top: 2px;
+        }
+        
+        .slider-control {
+            margin: 10px 0;
+        }
+        
+        .slider-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--papyrus);
+            margin-bottom: 5px;
+        }
+        
+        .slider-row .value {
+            color: var(--gold);
+            font-weight: bold;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 4px;
+            outline: none;
+            appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--gold);
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid var(--secondary);
+            box-shadow: 0 0 5px var(--gold);
+        }
+        
+        /* Sequencer */
+        .sequencer {
+            grid-column: 1 / -1;
+            background: linear-gradient(90deg, #2d2d4a, #1a1a2e);
+            border-radius: 8px;
+            border: 2px solid var(--secondary);
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .seq-controls {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .seq-btn {
+            width: 30px;
+            height: 30px;
+            background: var(--secondary);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--papyrus);
+            transition: all 0.2s;
+        }
+        
+        .seq-btn:hover {
+            background: var(--primary);
+        }
+        
+        .seq-btn.play {
+            background: #4CAF50;
+            font-size: 14px;
+        }
+        
+        .seq-btn.stop {
+            background: #f44336;
+            font-size: 14px;
+        }
+        
+        .seq-steps {
+            display: flex;
+            gap: 4px;
+            flex: 1;
+            justify-content: center;
+        }
+        
+        .seq-step {
+            width: 30px;
+            height: 30px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid var(--secondary);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .seq-step.active {
+            background: var(--gold);
+            box-shadow: 0 0 10px var(--gold);
+        }
+        
+        .seq-step.current {
+            border-color: #4CAF50;
+            box-shadow: 0 0 10px #4CAF50;
+        }
+        
+        /* Cake Easter Egg (hidden until special trigger) */
+        .cake-party {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--frosting);
+            border-radius: 50%;
+            width: 200px;
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 3px solid var(--gold);
+        }
+        
+        .cake-party.show {
+            opacity: 1;
+        }
+        
+        .cake-emoji {
+            font-size: 80px;
+            animation: bounce 0.5s infinite alternate;
+        }
+        
+        @keyframes bounce {
+            from { transform: translateY(-10px); }
+            to { transform: translateY(10px); }
+        }
+        
+        .cake-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--dark);
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        /* Sprinkles animation */
+        .sprinkle {
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            pointer-events: none;
+            animation: fall linear forwards;
+        }
+        
+        @keyframes fall {
+            from { 
+                transform: translateY(-100px) rotate(0deg); 
+                opacity: 1;
+            }
+            to { 
+                transform: translateY(100vh) rotate(720deg); 
+                opacity: 0;
+            }
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            background: var(--dark);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--secondary);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+        
+        /* Responsive */
+        @media (max-width: 1200px) {
+            #app {
+                grid-template-columns: 250px 1fr;
+            }
+            .heka-panel {
+                grid-column: 1 / -1;
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <span class="logo-glyph">𓆣</span>
+                <span>HIEROGLYPH PHONOGRAM ENGINE</span>
+            </div>
+            <div class="header-controls">
+                <div class="global-param">
+                    <label>Master Volume:</label>
+                    <input type="range" id="masterVolume" min="0" max="100" value="80">
+                    <span id="masterValue">80%</span>
+                </div>
+                <div class="global-param">
+                    <label>Coarticulation:</label>
+                    <input type="range" id="coarticulation" min="5" max="50" value="15" step="1">
+                    <span id="coarticulationValue">15ms</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Hieroglyph Keyboard -->
+        <div class="hieroglyph-panel">
+            <div class="panel-header">🔮 Glyph Keyboard</div>
+            <div class="glyph-grid" id="glyphGrid">
+                <!-- Glyphs will be generated by JS -->
+            </div>
+        </div>
+        
+        <!-- Central Display -->
+        <div class="display-panel">
+            <div class="visualizer">
+                <canvas id="visualizer"></canvas>
+                <div class="visualizer-controls">
+                    <button class="viz-btn" id="vizMode1" onclick="setVizMode('spectrum')">Spectrum</button>
+                    <button class="viz-btn" id="vizMode2" onclick="setVizMode('formant')">Formant</button>
+                    <button class="viz-btn" id="vizMode3" onclick="setVizMode('waveform')">Waveform</button>
+                    <button class="viz-btn" id="vizCake" onclick="cakeParty()" title="Press for a surprise!">🎂</button>
+                </div>
+            </div>
+            <div class="formant-display">
+                <div class="formant-box">
+                    <div class="formant-label">F1</div>
+                    <div class="formant-bar"><div class="formant-fill" id="f1Fill"></div></div>
+                    <div class="formant-freq" id="f1Value">300</div>
+                </div>
+                <div class="formant-box">
+                    <div class="formant-label">F2</div>
+                    <div class="formant-bar"><div class="formant-fill" id="f2Fill"></div></div>
+                    <div class="formant-freq" id="f2Value">1200</div>
+                </div>
+                <div class="formant-box">
+                    <div class="formant-label">F3</div>
+                    <div class="formant-bar"><div class="formant-fill" id="f3Fill"></div></div>
+                    <div class="formant-freq" id="f3Value">2500</div>
+                </div>
+                <div class="formant-box">
+                    <div class="formant-label">F4</div>
+                    <div class="formant-bar"><div class="formant-fill" id="f4Fill"></div></div>
+                    <div class="formant-freq" id="f4Value">3500</div>
+                </div>
+                <div class="formant-box">
+                    <div class="formant-label">F5</div>
+                    <div class="formant-bar"><div class="formant-fill" id="f5Fill"></div></div>
+                    <div class="formant-freq" id="f5Value">4000</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Heka Controls -->
+        <div class="heka-panel">
+            <div class="control-section">
+                <h3>⚡ Heka Modulation</h3>
+                
+                <div class="knob-control">
+                    <div class="knob" id="ritualKnob" data-param="ritualLevel" data-min="0" data-max="1" data-value="0">
+                        <div class="knob-indicator" style="transform: rotate(0deg)"></div>
+                    </div>
+                    <div class="knob-label">Ritual</div>
+                    <div class="knob-value" id="ritualValue">0%</div>
+                </div>
+                
+                <div class="knob-control">
+                    <div class="knob" id="shimmerKnob" data-param="shimmerRate" data-min="0.5" data-max="10" data-value="2">
+                        <div class="knob-indicator" style="transform: rotate(0deg)"></div>
+                    </div>
+                    <div class="knob-label">Shimmer</div>
+                    <div class="knob-value" id="shimmerValue">2Hz</div>
+                </div>
+                
+                <div class="knob-control">
+                    <div class="knob" id="overtoneKnob" data-param="overtoneMix" data-min="0" data-max="1" data-value="0.5">
+                        <div class="knob-indicator" style="transform: rotate(0deg)"></div>
+                    </div>
+                    <div class="knob-label">Overtone</div>
+                    <div class="knob-value" id="overtoneValue">50%</div>
+                </div>
+                
+                <div class="knob-control">
+                    <div class="knob" id="emphasisKnob" data-param="emphasis" data-min="0" data-max="1" data-value="0.5">
+                        <div class="knob-indicator" style="transform: rotate(0deg)"></div>
+                    </div>
+                    <div class="knob-label">Emphasis</div>
+                    <div class="knob-value" id="emphasisValue">50%</div>
+                </div>
+            </div>
+            
+            <div class="control-section">
+                <h3>🎛️ Morph & Effects</h3>
+                <div class="slider-control">
+                    <div class="slider-row">
+                        <span>Synth → Sample</span>
+                        <span id="morphValue">35%</span>
+                    </div>
+                    <input type="range" id="morphSlider" min="0" max="100" value="35" oninput="updateSliderParam('morph', this.value)">
+                </div>
+                
+                <div class="slider-control">
+                    <div class="slider-row">
+                        <span>Pitch Shift</span>
+                        <span id="pitchValue">0st</span>
+                    </div>
+                    <input type="range" id="pitchSlider" min="-12" max="12" value="0" oninput="updateSliderParam('pitch', this.value)">
+                </div>
+                
+                <div class="slider-control">
+                    <div class="slider-row">
+                        <span>Formant Shift</span>
+                        <span id="formantShiftValue">0st</span>
+                    </div>
+                    <input type="range" id="formantShiftSlider" min="-12" max="12" value="0" oninput="updateSliderParam('formantShift', this.value)">
+                </div>
+                
+                <div class="slider-control">
+                    <div class="slider-row">
+                        <span>Granular Freeze</span>
+                        <span id="freezeValue">0%</span>
+                    </div>
+                    <input type="range" id="freezeSlider" min="0" max="100" value="0" oninput="updateSliderParam('freeze', this.value)">
+                </div>
+            </div>
+            
+            <div class="control-section">
+                <h3>🏺 Temple Acoustics</h3>
+                <div class="slider-control">
+                    <div class="slider-row">
+                        <span>Reverb Mix</span>
+                        <span id="reverbValue">20%</span>
+                    </div>
+                    <input type="range" id="reverbSlider" min="0" max="100" value="20" oninput="updateSliderParam('reverb', this.value)">
+                </div>
+                
+                <select id="irSelect" onchange="updateIR(this.value)" style="width:100%; margin-top:10px; padding:5px; background:var(--dark); color:var(--papyrus); border:1px solid var(--secondary); border-radius:4px;">
+                    <option value="0">Karnak Temple</option>
+                    <option value="1">Luxor Temple</option>
+                    <option value="2">Deir el-Bahri</option>
+                    <option value="3">Giza Sphinx</option>
+                    <option value="4">Abu Simbel</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Sequencer -->
+        <div class="sequencer">
+            <div class="seq-controls">
+                <button class="seq-btn play" id="playBtn" onclick="togglePlayback()">▶</button>
+                <button class="seq-btn stop" onclick="stopPlayback()">■</button>
+                <button class="seq-btn" onclick="clearSequence()">🗑️</button>
+                <button class="seq-btn" onclick="addGlyph()">+</button>
+            </div>
+            <div class="seq-steps" id="seqSteps">
+                <!-- Steps generated by JS -->
+            </div>
+            <div style="color: var(--gold); font-size: 12px; margin-left: 10px;">
+                <div>BPM: <input type="number" id="bpm" value="90" min="40" max="240" style="width:50px; background:var(--dark); color:var(--gold); border:1px solid var(--secondary); border-radius:3px; text-align:center;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Cake Party Overlay -->
+    <div class="cake-party" id="cakeParty">
+        <div class="cake-emoji">🎂</div>
+        <div class="cake-text">Heka Cake Party!</div>
+    </div>
+    
+    <script>
+        // Glyph Database (26 uniliterals)
+        const glyphs = [
+            { symbol: '𓄿', translit: 'ꜣ', gardiner: 'A1', ipa: 'ʔ' },
+            { symbol: '𓂋', translit: 'r', gardiner: 'D21', ipa: 'ɾ' },
+            { symbol: '𓅱', translit: 'w', gardiner: 'G43', ipa: 'w' },
+            { symbol: '𓆑', translit: 'f', gardiner: 'I9', ipa: 'f' },
+            { symbol: '𓅓', translit: 'm', gardiner: 'G17', ipa: 'm' },
+            { symbol: '𓈖', translit: 'n', gardiner: 'N35', ipa: 'n' },
+            { symbol: '𓉔', translit: 'ḥ', gardiner: 'O4', ipa: 'ħ' },
+            { symbol: '𓎛', translit: 'ḫ', gardiner: 'V28', ipa: 'x' },
+            { symbol: '𓐍', translit: 'ẖ', gardiner: 'Aa1', ipa: 'ç' },
+            { symbol: '𓊃', translit: 's', gardiner: 'O34', ipa: 's' },
+            { symbol: '𓋴', translit: 'š', gardiner: 'S29', ipa: 'ʃ' },
+            { symbol: '𓈙', translit: 'q', gardiner: 'N37', ipa: 'q' },
+            { symbol: '𓎘', translit: 'k', gardiner: 'V31', ipa: 'k' },
+            { symbol: '𓎼', translit: 'g', gardiner: 'W11', ipa: 'ɡ' },
+            { symbol: '𓏏', translit: 't', gardiner: 'X1', ipa: 't' },
+            { symbol: '𓂧', translit: 'ṯ', gardiner: 'D46', ipa: 'tʃ' },
+            { symbol: '𓆓', translit: 'd', gardiner: 'I10', ipa: 'd' },
+            { symbol: '𓆘', translit: 'ḏ', gardiner: 'I11', ipa: 'dʒ' },
+            { symbol: '𓊪', translit: 'p', gardiner: 'Q3', ipa: 'p' },
+            { symbol: '𓃀', translit: 'b', gardiner: 'D58', ipa: 'b' },
+            { symbol: '𓆼', translit: 'h', gardiner: 'M12', ipa: 'h' },
+            { symbol: '𓉉', translit: 'h', gardiner: 'O6', ipa: 'h' },
+            { symbol: '𓇋', translit: 'j', gardiner: 'M17', ipa: 'j' },
+            { symbol: '𓏭', translit: 'y', gardiner: 'Z4', ipa: 'j' },
+            { symbol: '𓅃', translit: 'ꜥ', gardiner: 'G5', ipa: 'ʕ' },
+            { symbol: '𓂝', translit: 'ꜥ', gardiner: 'D36', ipa: 'ʕ' }
+        ];
+        
+        // State
+        let currentVizMode = 'spectrum';
+        let audioContext = null;
+        let analyser = null;
+        let animationId = null;
+        let isPlaying = false;
+        let sequence = [];
+        let currentStep = 0;
+        let stepInterval = null;
+        let lastNoteTime = 0;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            buildGlyphGrid();
+            buildSequencer();
+            initAudio();
+            initKnobs();
+            initVisualizer();
+        });
+        
+        // Build glyph keyboard
+        function buildGlyphGrid() {
+            const grid = document.getElementById('glyphGrid');
+            glyphs.forEach((glyph, index) => {
+                const key = document.createElement('div');
+                key.className = 'glyph-key';
+                key.dataset.index = index;
+                key.innerHTML = `
+                    <div class="glyph-symbol">${glyph.symbol}</div>
+                    <div class="glyph-translit">${glyph.translit}</div>
+                    <div class="glyph-gardiner">${glyph.gardiner}</div>
+                    <div class="glyph-info">${glyph.ipa}</div>
+                `;
+                key.onclick = () => triggerGlyph(index);
+                key.onmouseenter = () => showGlyphPreview(index);
+                grid.appendChild(key);
+            });
+        }
+        
+        // Trigger glyph (send MIDI note)
+        function triggerGlyph(index) {
+            const note = index + 60; // Map to MIDI notes starting at C4
+            sendMIDINote(note, 127);
+            highlightGlyph(index);
+            
+            // Add to sequence if in record mode
+            if (isRecording) {
+                sequence.push(note);
+                updateSequencer();
+            }
+        }
+        
+        // Send MIDI note via Web MIDI API
+        function sendMIDINote(note, velocity) {
+            if (navigator.requestMIDIAccess) {
+                navigator.requestMIDIAccess().then(midiAccess => {
+                    const outputs = midiAccess.outputs;
+                    outputs.forEach(output => {
+                        output.send([0x90, note, velocity]);
+                        setTimeout(() => output.send([0x80, note, 0]), 200);
+                    });
+                });
+            }
+            
+            // Also trigger visual feedback
+            updateFormantDisplay(note);
+        }
+        
+        // Highlight glyph
+        function highlightGlyph(index) {
+            document.querySelectorAll('.glyph-key').forEach((key, i) => {
+                key.classList.remove('active');
+                if (i === index) key.classList.add('active');
+            });
+            setTimeout(() => {
+                document.querySelectorAll('.glyph-key').forEach(key => {
+                    key.classList.remove('active');
+                });
+            }, 300);
+        }
+        
+        // Show glyph preview
+        function showGlyphPreview(index) {
+            // Could show tooltip with more info
+        }
+        
+        // Initialize audio context
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+        }
+        
+        // Initialize visualizer
+        function initVisualizer() {
+            const canvas = document.getElementById('visualizer');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            
+            // Resize handler
+            window.addEventListener('resize', () => {
+                canvas.width = canvas.parentElement.clientWidth;
+                canvas.height = canvas.parentElement.clientHeight;
+            });
+            
+            animateVisualizer(canvas, ctx);
+        }
+        
+        // Animation loop
+        function animateVisualizer(canvas, ctx) {
+            if (animationId) cancelAnimationFrame(animationId);
+            
+            const draw = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw background grid
+                drawGrid(ctx, canvas.width, canvas.height);
+                
+                if (currentVizMode === 'spectrum') {
+                    drawSpectrum(ctx, canvas.width, canvas.height);
+                } else if (currentVizMode === 'formant') {
+                    drawFormants(ctx, canvas.width, canvas.height);
+                } else {
+                    drawWaveform(ctx, canvas.width, canvas.height);
+                }
+                
+                animationId = requestAnimationFrame(draw);
+            };
+            draw();
+        }
+        
+        // Draw background grid
+        function drawGrid(ctx, width, height) {
+            ctx.strokeStyle = 'rgba(201, 162, 39, 0.1)';
+            ctx.lineWidth = 1;
+            
+            // Horizontal lines
+            for (let y = 0; y < height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+            
+            // Vertical lines
+            for (let x = 0; x < width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+        }
+        
+        // Draw spectrum
+        function drawSpectrum(ctx, width, height) {
+            if (!analyser) return;
+            
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+            
+            const barWidth = width / dataArray.length * 2;
+            let x = 0;
+            
+            // Draw frequency bars with gradient
+            for (let i = 0; i < dataArray.length; i += 2) {
+                const value = dataArray[i] / 255;
+                const barHeight = value * height;
+                const gradient = ctx.createLinearGradient(0, height, 0, height - barHeight);
+                gradient.addColorStop(0, 'rgba(201, 162, 39, 0.8)');
+                gradient.addColorStop(1, 'rgba(255, 215, 0, 0.2)');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, height - barHeight, barWidth, barHeight);
+                
+                x += barWidth;
+            }
+            
+            // Draw formant overlay lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            [300, 1200, 2500, 3500, 4000].forEach(freq => {
+                const x = (freq / (audioContext.sampleRate / 2)) * width;
+                if (x < width) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                    
+                    // Label
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.font = '10px sans-serif';
+                    ctx.fillText(`${freq}Hz`, x + 5, 15);
+                }
+            });
+        }
+        
+        // Draw formant display
+        function drawFormants(ctx, width, height) {
+            // Draw stylized formant tracks
+            const formants = [
+                { freq: 300, color: 'rgba(255, 100, 100, 0.8)' },
+                { freq: 1200, color: 'rgba(100, 255, 100, 0.8)' },
+                { freq: 2500, color: 'rgba(100, 100, 255, 0.8)' },
+                { freq: 3500, color: 'rgba(255, 255, 100, 0.8)' },
+                { freq: 4000, color: 'rgba(255, 100, 255, 0.8)' }
+            ];
+            
+            formants.forEach((formant, i) => {
+                const y = height - (formant.freq / 5000) * height;
+                
+                // Draw frequency line
+                ctx.strokeStyle = formant.color;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+                
+                // Draw animated pulse
+                const time = Date.now() / 1000;
+                const pulse = Math.sin(time * (i + 1)) * 5;
+                ctx.fillStyle = formant.color;
+                ctx.beginPath();
+                ctx.arc(width / 2 + pulse, y, 10, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Label
+                ctx.font = 'bold 14px monospace';
+                ctx.fillText(`F${i + 1}: ${formant.freq}Hz`, 20, y - 10);
+            });
+            
+            // Draw vocal tract representation
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(width / 2, height / 2, 30, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Draw moving dot
+            const angle = Date.now() / 1000;
+            const dotX = width / 2 + Math.cos(angle) * 30;
+            const dotY = height / 2 + Math.sin(angle) * 30;
+            ctx.fillStyle = 'rgba(255, 215, 0, 1)';
+            ctx.beginPath();
+            ctx.arc(dotX, dotY, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Draw waveform
+        function drawWaveform(ctx, width, height) {
+            if (!analyser) return;
+            
+            const dataArray = new Uint8Array(analyser.fftSize);
+            analyser.getByteTimeDomainData(dataArray);
+            
+            ctx.strokeStyle = 'rgba(201, 162, 39, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const sliceWidth = width / dataArray.length;
+            let x = 0;
+            
+            for (let i = 0; i < dataArray.length; i++) {
+                const value = dataArray[i] / 128.0;
+                const y = value * height / 2;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                
+                x += sliceWidth;
+            }
+            
+            ctx.stroke();
+            
+            // Draw center line
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+        }
+        
+        // Set visualization mode
+        function setVizMode(mode) {
+            currentVizMode = mode;
+            document.querySelectorAll('.viz-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`vizMode${mode.charAt(0).toUpperCase() + mode.slice(1)}`).classList.add('active');
+        }
+        
+        // Initialize knobs
+        function initKnobs() {
+            document.querySelectorAll('.knob').forEach(knob => {
+                let isDragging = false;
+                
+                knob.addEventListener('mousedown', () => {
+                    isDragging = true;
+                });
+                
+                document.addEventListener('mousemove', (e) => {
+                    if (isDragging) {
+                        const rect = knob.getBoundingClientRect();
+                        const angle = Math.atan2(e.clientY - rect.top - rect.height / 2, e.clientX - rect.left - rect.width / 2);
+                        updateKnob(knob, angle);
+                    }
+                });
+                
+                document.addEventListener('mouseup', () => {
+                    isDragging = false;
+                });
+            });
+        }
+        
+        // Update knob value
+        function updateKnob(knob, angle) {
+            const min = parseFloat(knob.dataset.min);
+            const max = parseFloat(knob.dataset.max);
+            const param = knob.dataset.param;
+            
+            // Convert angle to value
+            let value = ((angle + Math.PI) / (Math.PI * 2)) * (max - min) + min;
+            value = Math.max(min, Math.min(max, value));
+            
+            // Update indicator
+            const indicator = knob.querySelector('.knob-indicator');
+            const rotation = (value - min) / (max - min) * 270 - 135;
+            indicator.style.transform = `rotate(${rotation}deg)`;
+            
+            // Update display
+            knob.dataset.value = value;
+            updateKnobDisplay(param, value);
+        }
+        
+        // Update knob display
+        function updateKnobDisplay(param, value) {
+            const id = param + 'Value';
+            const element = document.getElementById(id);
+            
+            if (param === 'ritualLevel' || param === 'overtoneMix' || param === 'emphasis') {
+                element.textContent = `${Math.round(value * 100)}%`;
+            } else if (param === 'shimmerRate') {
+                element.textContent = `${value.toFixed(1)}Hz`;
+            }
+        }
+        
+        // Update slider parameter
+        function updateSliderParam(param, value) {
+            const id = param + 'Value';
+            const element = document.getElementById(id);
+            
+            if (param === 'morph' || param === 'freeze' || param === 'reverb') {
+                element.textContent = `${value}%`;
+            } else if (param === 'pitch' || param === 'formantShift') {
+                element.textContent = `${value}st`;
+            }
+        }
+        
+        // Update formant display
+        function updateFormantDisplay(note) {
+            const formants = [300, 1200, 2500, 3500, 4000];
+            formants.forEach((freq, i) => {
+                const fill = document.getElementById(`f${i + 1}Fill`);
+                const value = document.getElementById(`f${i + 1}Value`);
+                
+                // Slight variation based on note
+                const variation = ((note % 12) - 6) * 10;
+                const newFreq = freq + variation;
+                
+                fill.style.height = `${(newFreq / 5000) * 100}%`;
+                value.textContent = Math.round(newFreq);
+            });
+        }
+        
+        // Build sequencer
+        function buildSequencer() {
+            const sequencer = document.getElementById('seqSteps');
+            for (let i = 0; i < 16; i++) {
+                const step = document.createElement('div');
+                step.className = 'seq-step';
+                step.dataset.step = i;
+                step.onclick = () => toggleStep(i);
+                sequencer.appendChild(step);
+            }
+        }
+        
+        // Toggle step
+        function toggleStep(index) {
+            const step = document.querySelectorAll('.seq-step')[index];
+            step.classList.toggle('active');
+        }
+        
+        // Toggle playback
+        function togglePlayback() {
+            if (!isPlaying) {
+                startPlayback();
+            } else {
+                stopPlayback();
+            }
+        }
+        
+        // Start playback
+        function startPlayback() {
+            isPlaying = true;
+            document.getElementById('playBtn').classList.add('active');
+            currentStep = 0;
+            
+            const bpm = parseInt(document.getElementById('bpm').value);
+            const stepDuration = 60000 / (bpm * 4); // 16th notes
+            
+            stepInterval = setInterval(() => {
+                playStep(currentStep);
+                currentStep = (currentStep + 1) % 16;
+            }, stepDuration);
+        }
+        
+        // Stop playback
+        function stopPlayback() {
+            isPlaying = false;
+            document.getElementById('playBtn').classList.remove('active');
+            if (stepInterval) clearInterval(stepInterval);
+            document.querySelectorAll('.seq-step').forEach(step => step.classList.remove('current'));
+        }
+        
+        // Play step
+        function playStep(stepIndex) {
+            document.querySelectorAll('.seq-step').forEach(step => step.classList.remove('current'));
+            document.querySelectorAll('.seq-step')[stepIndex].classList.add('current');
+            
+            if (sequence[stepIndex] !== undefined) {
+                sendMIDINote(sequence[stepIndex], 100);
+            }
+        }
+        
+        // Clear sequence
+        function clearSequence() {
+            sequence = [];
+            document.querySelectorAll('.seq-step').forEach(step => step.classList.remove('active'));
+        }
+        
+        // Add glyph to sequence
+        function addGlyph() {
+            // Simple implementation - adds the last triggered glyph
+            if (sequence.length < 16) {
+                sequence.push(sequence[sequence.length - 1] || 60);
+                updateSequencer();
+            }
+        }
+        
+        // Update sequencer display
+        function updateSequencer() {
+            sequence.forEach((note, index) => {
+                const step = document.querySelectorAll('.seq-step')[index];
+                if (step) {
+                    step.classList.add('active');
+                    step.title = `Note: ${note}`;
+                }
+            });
+        }
+        
+        // Update IR selection
+        function updateIR(value) {
+            console.log(`Selected IR: ${value}`);
+            // Send MIDI CC to Amorph
+            if (navigator.requestMIDIAccess) {
+                navigator.requestMIDIAccess().then(midiAccess => {
+                    const outputs = midiAccess.outputs;
+                    outputs.forEach(output => {
+                        output.send([0xB0, 50, parseInt(value)]);
+                    });
+                });
+            }
+        }
+        
+        // Cake Party! (Easter Egg)
+        function cakeParty() {
+            const cake = document.getElementById('cakeParty');
+            cake.classList.add('show');
+            
+            // Create sprinkles
+            for (let i = 0; i < 50; i++) {
+                setTimeout(() => {
+                    createSprinkle();
+                }, Math.random() * 2000);
+            }
+            
+            // Play a festive little melody
+            const notes = [72, 76, 79, 84, 79, 76, 72];
+            notes.forEach((note, i) => {
+                setTimeout(() => sendMIDINote(note, 100), i * 200);
+            });
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                cake.classList.remove('show');
+            }, 3000);
+        }
+        
+        // Create sprinkle
+        function createSprinkle() {
+            const sprinkle = document.createElement('div');
+            sprinkle.className = 'sprinkle';
+            sprinkle.style.left = Math.random() * 100 + 'vw';
+            sprinkle.style.backgroundColor = ['#ff6b6b', '#4ecdc4', '#ffe66d', '#95e1d3'][Math.floor(Math.random() * 4)];
+            sprinkle.style.animationDuration = (2 + Math.random() * 3) + 's';
+            document.body.appendChild(sprinkle);
+            
+            setTimeout(() => sprinkle.remove(), 5000);
+        }
+        
+        // Handle master volume
+        document.getElementById('masterVolume').addEventListener('input', function() {
+            document.getElementById('masterValue').textContent = this.value + '%';
+            if (navigator.requestMIDIAccess) {
+                navigator.requestMIDIAccess().then(midiAccess => {
+                    const outputs = midiAccess.outputs;
+                    outputs.forEach(output => {
+                        output.send([0xB0, 7, parseInt(this.value * 127 / 100)]);
+                    });
+                });
+            }
+        });
+        
+        // Handle coarticulation
+        document.getElementById('coarticulation').addEventListener('input', function() {
+            document.getElementById('coarticulationValue').textContent = this.value + 'ms';
+            if (navigator.requestMIDIAccess) {
+                navigator.requestMIDIAccess().then(midiAccess => {
+                    const outputs = midiAccess.outputs;
+                    outputs.forEach(output => {
+                        output.send([0xB0, 51, parseInt(this.value)]);
+                    });
+                });
+            }
+        });
+        
+        // Initialize keyboard events for glyph triggering
+        document.addEventListener('keydown', (e) => {
+            if (e.key >= '1' && e.key <= '9') {
+                const index = parseInt(e.key) - 1;
+                if (index < glyphs.length) {
+                    triggerGlyph(index);
+                }
+            } else if (e.key === '0') {
+                triggerGlyph(9);
+            }
+        });
+    </script>
+</body>
+</html>

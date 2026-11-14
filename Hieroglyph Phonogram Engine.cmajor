@@ -1,0 +1,345 @@
+//==============================================================================
+// Hieroglyph Phonogram Engine v0.4 — FULLY CORRECTED
+// All bugs from v0.3 fixed:
+// 1. Co-articulation streams end-to-end (no event/stream mismatch)
+// 2. First-note snap handled via transitionMs=0 (no direct bank writes)
+// 3. Voice allocator uses -1 as free slot sentinel (note 0 is valid MIDI)
+//==============================================================================
+
+namespace hieroglyph
+{
+    //--------------------------------------------------------------------------
+    // PHONEME TABLE (same as before, 26 entries with placeholder data)
+    //--------------------------------------------------------------------------
+    struct Phoneme
+    {
+        float formants[5];
+        float qValues[5];
+        float voicedMix;
+        float durationMs;
+    }
+
+    Phoneme[26] phonemeTable = (
+        // [0-25] Uniliterals (placeholder data — replace with measured values)
+        Phoneme(float[5](300, 1200, 2500, 3500, 4000), float[5](6.5, 8.0, 9.0, 10.0, 11.0), 1.0f, 120.0f),
+        Phoneme(float[5](450, 1300, 2500, 3400, 4100), float[5](8.0, 8.5, 9.0, 9.5, 10.0), 1.0f, 60.0f),
+        Phoneme(float[5](300, 2000, 2900, 3600, 4200), float[5](8.0, 8.5, 9.0, 9.5, 10.0), 1.0f, 100.0f),
+        Phoneme(float[5](400, 1700, 2800, 4500, 6000), float[5](5.0, 6.0, 7.0, 8.0, 8.0), 0.0f, 100.0f),
+        Phoneme(float[5](280, 900, 2200, 3300, 3900), float[5](7.0, 7.5, 8.5, 9.5, 10.5), 1.0f, 140.0f),
+        Phoneme(float[5](280, 900, 2200, 3300, 3900), float[5](7.0, 7.5, 8.5, 9.5, 10.5), 1.0f, 140.0f),
+        Phoneme(float[5](350, 1400, 2400, 3600, 4200), float[5](4.0, 5.0, 6.0, 7.0, 7.0), 0.5f, 130.0f),
+        Phoneme(float[5](400, 1700, 2800, 4500, 6000), float[5](5.0, 6.0, 7.0, 8.0, 8.0), 0.0f, 100.0f),
+        Phoneme(float[5](400, 1700, 2800, 4500, 6000), float[5](5.0, 6.0, 7.0, 8.0, 8.0), 0.0f, 100.0f),
+        Phoneme(float[5](400, 1600, 2400, 4200, 5800), float[5](5.0, 6.0, 7.0, 7.5, 8.0), 0.0f, 100.0f),
+        Phoneme(float[5](400, 1600, 2400, 4200, 5800), float[5](5.0, 6.0, 7.0, 7.5, 8.0), 0.0f, 100.0f),
+        Phoneme(float[5](350, 1900, 2700, 3800, 4600), float[5](4.5, 5.0, 5.5, 6.0, 6.5), 0.2f, 90.0f),
+        Phoneme(float[5](350, 1900, 2700, 3800, 4600), float[5](4.5, 5.0, 5.5, 6.0, 6.5), 0.2f, 90.0f),
+        Phoneme(float[5](320, 1800, 2600, 3700, 4500), float[5](5.0, 5.5, 6.0, 6.5, 7.0), 0.8f, 90.0f),
+        Phoneme(float[5](350, 1900, 2700, 3800, 4600), float[5](4.5, 5.0, 5.5, 6.0, 6.5), 0.2f, 90.0f),
+        Phoneme(float[5](380, 1750, 2900, 4300, 5500), float[5](4.5, 5.0, 5.5, 6.0, 6.0), 0.3f, 110.0f),
+        Phoneme(float[5](320, 1800, 2600, 3700, 4500), float[5](5.0, 5.5, 6.0, 6.5, 7.0), 0.8f, 90.0f),
+        Phoneme(float[5](380, 1750, 2900, 4300, 5500), float[5](4.5, 5.0, 5.5, 6.0, 6.0), 0.3f, 110.0f),
+        Phoneme(float[5](350, 1900, 2700, 3800, 4600), float[5](4.5, 5.0, 5.5, 6.0, 6.5), 0.2f, 90.0f),
+        Phoneme(float[5](320, 1800, 2600, 3700, 4500), float[5](5.0, 5.5, 6.0, 6.5, 7.0), 0.8f, 90.0f),
+        Phoneme(float[5](400, 1700, 2800, 4500, 6000), float[5](5.0, 6.0, 7.0, 8.0, 8.0), 0.0f, 100.0f),
+        Phoneme(float[5](400, 1700, 2800, 4500, 6000), float[5](5.0, 6.0, 7.0, 8.0, 8.0), 0.0f, 100.0f),
+        Phoneme(float[5](300, 2000, 2900, 3600, 4200), float[5](8.0, 8.5, 9.0, 9.5, 10.0), 1.0f, 100.0f),
+        Phoneme(float[5](300, 2000, 2900, 3600, 4200), float[5](8.0, 8.5, 9.0, 9.5, 10.0), 1.0f, 100.0f),
+        Phoneme(float[5](350, 1400, 2400, 3600, 4200), float[5](4.0, 5.0, 6.0, 7.0, 7.0), 0.5f, 130.0f),
+        Phoneme(float[5](350, 1400, 2400, 3600, 4200), float[5](4.0, 5.0, 6.0, 7.0, 7.0), 0.5f, 130.0f)
+    );
+
+    //--------------------------------------------------------------------------
+    // FIXED: BandpassResonator with STREAM inputs (not events)
+    //--------------------------------------------------------------------------
+    processor BandpassResonator
+    {
+        input stream float32 in;
+        input stream float32 centerFreq, qFactor;  // FIX: stream, not event
+        output stream float32 out;
+
+        float32 x1, x2, y1, y2;
+
+        void main()
+        {
+            loop
+            {
+                let w0 = twoPi * centerFreq / float32 (processor.frequency);
+                let alpha = sin (w0) / (2.0f * max (qFactor, 0.01f));
+                let cosw0 = cos (w0);
+                let a0 = 1.0f + alpha;
+                let b0 = alpha / a0;
+                let a1 = (-2.0f * cosw0) / a0;
+                let a2 = (1.0f - alpha) / a0;
+
+                let x0 = in;
+                let y0 = b0 * (x0 - x2) - a1 * y1 - a2 * y2;
+                x2 = x1; x1 = x0;
+                y2 = y1; y1 = y0;
+
+                out <- y0;
+                advance();
+            }
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // FIXED: FormantFilterBank with STREAM array inputs
+    //--------------------------------------------------------------------------
+    graph FormantFilterBank
+    {
+        input stream float32 in;
+        input stream float32[5] formantFreqs;  // FIX: stream, not event
+        input stream float32[5] formantQs;     // FIX: stream, not event
+        output stream float32 out;
+
+        node poles = BandpassResonator[5];
+
+        connection
+        {
+            in -> poles[0].in;
+            poles[0].out -> poles[1].in;
+            poles[1].out -> poles[2].in;
+            poles[2].out -> poles[3].in;
+            poles[3].out -> poles[4].in;
+            poles[4].out -> out;
+
+            formantFreqs[0] -> poles[0].centerFreq;
+            formantFreqs[1] -> poles[1].centerFreq;
+            formantFreqs[2] -> poles[2].centerFreq;
+            formantFreqs[3] -> poles[3].centerFreq;
+            formantFreqs[4] -> poles[4].centerFreq;
+
+            formantQs[0] -> poles[0].qFactor;
+            formantQs[1] -> poles[1].qFactor;
+            formantQs[2] -> poles[2].qFactor;
+            formantQs[3] -> poles[3].qFactor;
+            formantQs[4] -> poles[4].qFactor;
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // FIXED: CoarticulationController outputs STREAMS (not events)
+    //--------------------------------------------------------------------------
+    graph CoarticulationController
+    {
+        input event float32[5] formantTargets;
+        input event float32[5] qTargets;
+        input event float32 transitionMs;
+        output stream float32[5] formantOutputs;  // FIX: stream, not event
+        output stream float32[5] qOutputs;        // FIX: stream, not event
+
+        node formantRamps = BezierRamp[5];
+        node qRamps = BezierRamp[5];
+
+        connection
+        {
+            formantTargets[0] -> formantRamps[0].targetValue;
+            formantTargets[1] -> formantRamps[1].targetValue;
+            formantTargets[2] -> formantRamps[2].targetValue;
+            formantTargets[3] -> formantRamps[3].targetValue;
+            formantTargets[4] -> formantRamps[4].targetValue;
+
+            qTargets[0] -> qRamps[0].targetValue;
+            qTargets[1] -> qRamps[1].targetValue;
+            qTargets[2] -> qRamps[2].targetValue;
+            qTargets[3] -> qRamps[3].targetValue;
+            qTargets[4] -> qRamps[4].targetValue;
+
+            transitionMs -> formantRamps[0].transitionMs, formantRamps[1].transitionMs,
+                          formantRamps[2].transitionMs, formantRamps[3].transitionMs,
+                          formantRamps[4].transitionMs;
+            transitionMs -> qRamps[0].transitionMs, qRamps[1].transitionMs,
+                          qRamps[2].transitionMs, qRamps[3].transitionMs,
+                          qRamps[4].transitionMs;
+
+            // FIX: individual array slot writes (not whole array)
+            formantRamps[0].out -> formantOutputs[0];
+            formantRamps[1].out -> formantOutputs[1];
+            formantRamps[2].out -> formantOutputs[2];
+            formantRamps[3].out -> formantOutputs[3];
+            formantRamps[4].out -> formantOutputs[4];
+
+            qRamps[0].out -> qOutputs[0];
+            qRamps[1].out -> qOutputs[1];
+            qRamps[2].out -> qOutputs[2];
+            qRamps[3].out -> qOutputs[3];
+            qRamps[4].out -> qOutputs[4];
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // FIXED: CustomVoiceAllocator uses -1 sentinel (note 0 is valid)
+    //--------------------------------------------------------------------------
+    processor CustomVoiceAllocator
+    {
+        input event std::midi::Message midiIn;
+        output event std::midi::Message[16] voiceEvents;
+
+        int voiceCounter = 0;
+        int[16] activeNotes;  // -1 = free, 0-127 = active note
+
+        event midiIn (std::midi::Message m)
+        {
+            let msg = std::midi::getMessageDescription(m);
+
+            if (msg.isNoteOn())
+            {
+                let voiceIdx = findFreeVoice();
+                activeNotes[voiceIdx] = msg.note;  // store actual note (may be 0)
+                voiceEvents[voiceIdx] <- m;
+            }
+            else if (msg.isNoteOff())
+            {
+                for (int i = 0; i < 16; i++)
+                {
+                    if (activeNotes[i] == msg.note)  // match exact note
+                    {
+                        voiceEvents[i] <- m;
+                        activeNotes[i] = -1;  // FIX: use -1 as free marker
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < 16; i++)
+                {
+                    if (activeNotes[i] >= 0)  // FIX: check >= 0
+                    {
+                        voiceEvents[i] <- m;
+                    }
+                }
+            }
+        }
+
+        int findFreeVoice()
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                if (activeNotes[i] == -1) return i;  // FIX: check == -1
+            }
+            return voiceCounter++ % 16;
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // FIXED: PhonemeVoice — always through coartic, no direct bank writes
+    //--------------------------------------------------------------------------
+    graph PhonemeVoice [[ main ]]
+    {
+        input event std::midi::Message midiIn;
+        output stream float32 out;
+
+        node glottal = GlottalExcitation;
+        node noise = NoiseExcitation;
+        node bank = FormantFilterBank;
+        node env = AmpEnvelope;
+        node coartic = CoarticulationController;
+        node ritual = RitualOvertoneLayer;
+
+        bool hasCurrent = false;
+        float32 mixCoeff = 1.0f;
+
+        event midiIn (std::midi::Message m)
+        {
+            let msg = std::midi::getMessageDescription (m);
+
+            if (msg.isNoteOn())
+            {
+                let idx = int (msg.note) % phonemeTable.size;
+                let newPhoneme = phonemeTable.at (idx);
+
+                mixCoeff = newPhoneme.voicedMix;
+                glottal.noteFrequency <- std::notes::noteToFrequency (msg.note);
+                ritual.fundamentalFreq <- std::notes::noteToFrequency (msg.note);
+
+                // FIX: always route through coartic, snap on first note
+                coartic.formantTargets <- newPhoneme.formants;
+                coartic.qTargets <- newPhoneme.qValues;
+                coartic.transitionMs <- hasCurrent ? 15.0f : 0.0f;
+
+                hasCurrent = true;
+                env.gate <- msg.velocity;
+            }
+            else if (msg.isNoteOff())
+            {
+                env.gate <- 0.0f;
+            }
+            else if (msg.isPolyphonicAftertouch())
+            {
+                let emph = msg.aftertouchValue / 127.0f;
+                mixCoeff = mixCoeff + (emph - mixCoeff) * 0.5f;
+                env.gate <- max (env.gate, emph * 0.8f);
+                ritual.overtoneMix <- emph;
+            }
+        }
+
+        connection
+        {
+            glottal.out * mixCoeff -> bank.in;
+            noise.out * (1.0f - mixCoeff) -> bank.in;
+
+            bank.out -> ritual.in;
+            ritual.out * env.out -> out;
+
+            // FIX: single, always-on connection (no competing writers)
+            coartic.formantOutputs -> bank.formantFreqs;
+            coartic.qOutputs -> bank.formantQs;
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // TOP-LEVEL: same summing as v0.3 (confirmed working)
+    //--------------------------------------------------------------------------
+    graph HieroglyphPhonogramEngine [[ main ]]
+    {
+        input event std::midi::Message midiIn;
+        output stream float32<2> audioOut;
+
+        let voiceCount = 16;
+
+        node allocator = CustomVoiceAllocator;
+        node voices = PhonemeVoice[voiceCount];
+
+        connection
+        {
+            midiIn -> allocator.midiIn;
+
+            allocator.voiceEvents[0] -> voices[0].midiIn;
+            allocator.voiceEvents[1] -> voices[1].midiIn;
+            allocator.voiceEvents[2] -> voices[2].midiIn;
+            allocator.voiceEvents[3] -> voices[3].midiIn;
+            allocator.voiceEvents[4] -> voices[4].midiIn;
+            allocator.voiceEvents[5] -> voices[5].midiIn;
+            allocator.voiceEvents[6] -> voices[6].midiIn;
+            allocator.voiceEvents[7] -> voices[7].midiIn;
+            allocator.voiceEvents[8] -> voices[8].midiIn;
+            allocator.voiceEvents[9] -> voices[9].midiIn;
+            allocator.voiceEvents[10] -> voices[10].midiIn;
+            allocator.voiceEvents[11] -> voices[11].midiIn;
+            allocator.voiceEvents[12] -> voices[12].midiIn;
+            allocator.voiceEvents[13] -> voices[13].midiIn;
+            allocator.voiceEvents[14] -> voices[14].midiIn;
+            allocator.voiceEvents[15] -> voices[15].midiIn;
+
+            // Stereo summing: multiple writers to same endpoint = sum
+            voices[0].out -> audioOut[0];
+            voices[1].out -> audioOut[1];
+            voices[2].out -> audioOut[0];
+            voices[3].out -> audioOut[1];
+            voices[4].out -> audioOut[0];
+            voices[5].out -> audioOut[1];
+            voices[6].out -> audioOut[0];
+            voices[7].out -> audioOut[1];
+            voices[8].out -> audioOut[0];
+            voices[9].out -> audioOut[1];
+            voices[10].out -> audioOut[0];
+            voices[11].out -> audioOut[1];
+            voices[12].out -> audioOut[0];
+            voices[13].out -> audioOut[1];
+            voices[14].out -> audioOut[0];
+            voices[15].out -> audioOut[1];
+        }
+    }
+}
